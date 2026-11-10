@@ -1,1 +1,55 @@
+# Publishes the site to GitHub Pages. The Firebase web key is not in the repository: the pages contain the
+# placeholder __FIREBASE_API_KEY__, which is filled in here from the repository secret FIREBASE_API_KEY.
+name: Publish
 
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Fill in the Firebase web key
+        env:
+          FIREBASE_API_KEY: ${{ secrets.FIREBASE_API_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "${FIREBASE_API_KEY}" ]; then echo "Repository secret FIREBASE_API_KEY is missing"; exit 1; fi
+          python3 - <<'PY'
+          import os, shutil
+          os.makedirs('site', exist_ok=True)
+          for name in os.listdir('.'):
+              if name in ('site', '.git', '.github') or not os.path.isfile(name):
+                  continue
+              if name.endswith('.html'):
+                  html = open(name, encoding='utf-8').read()
+                  html = html.replace('__FIREBASE_API_KEY__', os.environ['FIREBASE_API_KEY'])
+                  open(os.path.join('site', name), 'w', encoding='utf-8').write(html)
+              else:
+                  shutil.copy(name, 'site')
+          PY
+      - uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
+      - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: site
+      - id: deploy
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
