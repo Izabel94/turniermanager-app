@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>TurnierManager 1.22.0 - Volleyball Edition</title>
+    <title>TurnierManager 1.23.0 - Volleyball Edition</title>
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Chart.js -->
@@ -124,7 +124,7 @@
     <header class="bg-slate-900 text-white border-b border-slate-800">
         <div class="max-w-7xl mx-auto px-4 py-2.5 flex flex-wrap justify-between items-center gap-3">
             <div class="flex items-center gap-3">
-                <span class="bg-sky-500 text-slate-950 font-black px-2 py-0.5 rounded text-xs tracking-wider">TMGR v1.22.0</span>
+                <span class="bg-sky-500 text-slate-950 font-black px-2 py-0.5 rounded text-xs tracking-wider">TMGR v1.23.0</span>
                 <div>
                     <h1 id="header-tournament-name" class="font-bold text-sm sm:text-base leading-tight">TurnierManager</h1>
                     <p class="text-[10px] text-slate-400 flex items-center gap-1.5">
@@ -1054,6 +1054,10 @@
         window.uiPrompt = uiPrompt;
 
         // --- GLOBAL APP STATE ---
+        // Result fields of a game. Defined before anything loads a saved state.
+        const SET_FIELDS = [1, 2, 3, 4, 5].flatMap(k => [`set${k}A`, `set${k}B`]); // best of 5 at most
+        const SCORE_FIELDS = [...SET_FIELDS, 'setsA', 'setsB', 'scoreA', 'scoreB', 'isTimeCap'];
+        function emptyScore() { const r = {}; SCORE_FIELDS.forEach(k => { r[k] = k === 'isTimeCap' ? false : 0; }); return r; }
         window.appState = {
             tournament: {
                 name: "Volleyball Hallencup 2026",
@@ -1243,7 +1247,11 @@
             if (appState.tournament.oddGroupPolicy == null) appState.tournament.oddGroupPolicy = 'BYE_FIRST';
             (appState.gameProfiles || []).forEach(p => { if (p.decidingSetMode == null) p.decidingSetMode = 'TIE'; });
             appState.seq = appState.seq || 100;
-            (appState.matches || []).forEach(m => { if (m.status === 'COMPLETED' && !m.savedResult) m.savedResult = savedResultOf(m); });
+            (appState.matches || []).forEach(m => {
+                SET_FIELDS.forEach(k => { if (m[k] == null) m[k] = 0; });
+                if (m.savedResult) SET_FIELDS.forEach(k => { if (m.savedResult[k] == null) m.savedResult[k] = 0; });
+                if (m.status === 'COMPLETED' && !m.savedResult) m.savedResult = savedResultOf(m);
+            });
             appState.byes = appState.byes || [];
             appState.log = appState.log || [];
             appState.redo = appState.redo || [];
@@ -1262,6 +1270,12 @@
         }
         window.normalizeState = normalizeState;
 
+        // Sets a game has under a profile: best of 1, 3 or 5 (1, 2 or 3 Gewinnsätze); the last one is the Entscheidungssatz.
+        function setCountOf(prof) {
+            const wins = Math.min(3, Math.max(1, parseInt(prof && prof.winningSets) || 2));
+            return 2 * wins - 1;
+        }
+        window.setCountOf = setCountOf;
         function profileForRound(r) {
             const id = (appState.roundProfileMap && appState.roundProfileMap[r]) || 'PROF-STD';
             return appState.gameProfiles.find(p => p.id === id)
@@ -1643,10 +1657,9 @@
         }
         // Typing a score updates the game right away (the Beamer shows it live). What counts — for undo and online —
         // is the result last saved with Speichern: m.savedResult for a finished game, nothing for an open one.
-        const SCORE_FIELDS = ['set1A', 'set1B', 'set2A', 'set2B', 'set3A', 'set3B', 'setsA', 'setsB', 'scoreA', 'scoreB', 'isTimeCap'];
         function savedResultOf(m) { const r = {}; SCORE_FIELDS.forEach(k => { r[k] = m[k]; }); return r; }
         function asSaved(m) {
-            if (m.status === 'SCHEDULED') { const c = { ...m }; SCORE_FIELDS.forEach(k => { c[k] = k === 'isTimeCap' ? false : 0; }); return c; }
+            if (m.status === 'SCHEDULED') return { ...m, ...emptyScore() };
             if (m.status === 'COMPLETED' && m.savedResult) return { ...m, ...m.savedResult };
             return m;
         }
@@ -1660,6 +1673,7 @@
             appState.matches = p.matches;
             appState.byes = p.byes || [];
             if (p.seq != null) appState.seq = p.seq;
+            window.normalizeState(); // a snapshot taken by an older version gets the fields added since
         }
         function updateUndoRedoButtons() {
             const u = document.getElementById('btn-undo');
@@ -2245,8 +2259,8 @@
                         <div class="text-[11px] text-slate-600 space-y-1 font-mono">
                             <div>Dauer: ${p.matchDurationMin}m Spiel + ${p.pauseDurationMin}m Pause</div>
                             <div>Modus: ${p.winningSets} Gewinnsätze</div>
-                            <div>Satz 1-2: min. ${p.minSetPoints} Pkt (${p.minLeadPoints} Vorsprung)</div>
-                            <div>Entscheidungssatz: min. ${p.decidingSetMinPoints} Pkt</div>
+                            <div>Satz ${setCountOf(p) > 2 ? '1–' + (setCountOf(p) - 1) : '1'}: min. ${p.minSetPoints} Pkt (${p.minLeadPoints} Vorsprung)</div>
+                            ${setCountOf(p) > 1 ? `<div>Entscheidungssatz (Satz ${setCountOf(p)}): min. ${p.decidingSetMinPoints} Pkt</div>` : ''}
                         </div>
                     </div>
                 `).join('');
@@ -2573,9 +2587,7 @@
                 phase: phaseLabel || undefined,
                 teamAId: p[0].id,
                 teamBId: p[1].id,
-                setsA: 0, setsB: 0, scoreA: 0, scoreB: 0,
-                set1A: 0, set1B: 0, set2A: 0, set2B: 0, set3A: 0, set3B: 0,
-                isTimeCap: false, refTeamId: null, refText: '',
+                ...emptyScore(), refTeamId: null, refText: '',
                 status: 'SCHEDULED'
             }));
         }
@@ -3355,70 +3367,58 @@
             const match = appState.matches.find(m => m.id === matchId);
             if (!match) return;
 
-            const profId = appState.roundProfileMap[match.round] || "PROF-STD";
-            const prof = appState.gameProfiles.find(p => p.id === profId) || appState.gameProfiles[0];
+            const prof = profileForRound(match.round); // the same profile the game card shows
+            const targetPts12 = prof.minSetPoints;
+            const targetPtsDec = prof.decidingSetMinPoints;
+            const minLead = prof.minLeadPoints;
 
-            const targetPts12 = prof ? prof.minSetPoints : 25;
-            const targetPtsDec = prof ? prof.decidingSetMinPoints : 15;
-            const minLead = prof ? prof.minLeadPoints : 2;
-
-            const elS1A = document.getElementById(`s1A-${matchId}`);
-            const elS1B = document.getElementById(`s1B-${matchId}`);
-            const elS2A = document.getElementById(`s2A-${matchId}`);
-            const elS2B = document.getElementById(`s2B-${matchId}`);
-            const elS3A = document.getElementById(`s3A-${matchId}`);
-            const elS3B = document.getElementById(`s3B-${matchId}`);
             const elCap = document.getElementById(`timeCap-${matchId}`);
-
             const isTimeCap = elCap ? elCap.checked : false;
             match.isTimeCap = isTimeCap;
 
-            const s1A = elS1A ? Math.max(0, parseInt(elS1A.value) || 0) : 0;
-            const s1B = elS1B ? Math.max(0, parseInt(elS1B.value) || 0) : 0;
-            const s2A = elS2A ? Math.max(0, parseInt(elS2A.value) || 0) : 0;
-            const s2B = elS2B ? Math.max(0, parseInt(elS2B.value) || 0) : 0;
-            const s3A = elS3A ? Math.max(0, parseInt(elS3A.value) || 0) : 0;
-            const s3B = elS3B ? Math.max(0, parseInt(elS3B.value) || 0) : 0;
-
-            // Clamp negative inputs back to 0 in DOM
-            if (elS1A && parseInt(elS1A.value) < 0) elS1A.value = 0;
-            if (elS1B && parseInt(elS1B.value) < 0) elS1B.value = 0;
-            if (elS2A && parseInt(elS2A.value) < 0) elS2A.value = 0;
-            if (elS2B && parseInt(elS2B.value) < 0) elS2B.value = 0;
-            if (elS3A && parseInt(elS3A.value) < 0) elS3A.value = 0;
-            if (elS3B && parseInt(elS3B.value) < 0) elS3B.value = 0;
-
-            match.set1A = s1A; match.set1B = s1B;
-            match.set2A = s2A; match.set2B = s2B;
-            match.set3A = s3A; match.set3B = s3B;
-
-            const decMode = (prof && prof.decidingSetMode) || 'TIE';
-
-            // Sets from the first two sets
-            let setsA = 0, setsB = 0;
-            if (s1A > s1B) setsA++; else if (s1B > s1A) setsB++;
-            if (s2A > s2B) setsA++; else if (s2B > s2A) setsB++;
-            const setsTied = setsA === setsB;
-            const decidingApplies = decMode === 'ALWAYS' || setsTied; // when the deciding set counts
-
-            // Validate Sets
-            const res1 = validateVolleyballSetScore(s1A, s1B, targetPts12, minLead, isTimeCap);
-            const res2 = validateVolleyballSetScore(s2A, s2B, targetPts12, minLead, isTimeCap);
-            let res3 = { valid: true, reason: "" };
-            const s3Entered = s3A > 0 || s3B > 0;
-            if (s3Entered && !decidingApplies) {
-                res3 = { valid: false, reason: 'Entscheidungssatz nur bei Satzgleichstand (1:1) — Profil-Einstellung.' };
-            } else if (s3Entered) {
-                res3 = validateVolleyballSetScore(s3A, s3B, targetPtsDec, minLead, isTimeCap);
+            // Read the set boxes the profile shows (best of 1, 3 or 5); sets beyond that count as 0:0.
+            const setCount = setCountOf(prof);
+            const winsNeeded = (setCount + 1) / 2;
+            const sets = [];
+            for (let k = 1; k <= 5; k++) {
+                const points = side => {
+                    const el = document.getElementById(`s${k}${side}-${matchId}`);
+                    if (!el || k > setCount) return 0;
+                    if (parseInt(el.value) < 0) el.value = 0;
+                    return Math.max(0, parseInt(el.value) || 0);
+                };
+                const a = points('A'), b = points('B');
+                match[`set${k}A`] = a; match[`set${k}B`] = b;
+                if (k <= setCount) sets.push([a, b]);
             }
 
-            // Count the deciding set only when it applies
-            if (decidingApplies) { if (s3A > s3B) setsA++; else if (s3B > s3A) setsB++; }
+            // A set counts while the game is still open; with "nur bei Satzgleichstand" no set is played after
+            // a team has its Gewinnsätze. The first Gewinnsätze-many sets are always checked, later ones when entered.
+            const decMode = (prof && prof.decidingSetMode) || 'TIE';
+            let setsA = 0, setsB = 0, errReason = '';
+            sets.forEach(([a, b], i) => {
+                const k = i + 1;
+                const entered = a > 0 || b > 0;
+                if (decMode !== 'ALWAYS' && (setsA === winsNeeded || setsB === winsNeeded)) {
+                    if (entered && !errReason) errReason = `Satz ${k} wird nicht mehr gespielt – das Spiel ist bei ${setsA}:${setsB} entschieden (Profil-Einstellung).`;
+                    return;
+                }
+                if (decMode !== 'ALWAYS' && k === setCount && setCount > 1 && setsA !== setsB) {
+                    if (entered && !errReason) errReason = `Entscheidungssatz nur bei Satzgleichstand (${winsNeeded - 1}:${winsNeeded - 1}) — Profil-Einstellung.`;
+                    return;
+                }
+                if (k <= winsNeeded || entered) {
+                    const target = k === setCount && setCount > 1 ? targetPtsDec : targetPts12;
+                    const res = validateVolleyballSetScore(a, b, target, minLead, isTimeCap);
+                    if (!res.valid && !errReason) errReason = res.reason;
+                }
+                if (a > b) setsA++; else if (b > a) setsB++;
+            });
 
             match.setsA = setsA;
             match.setsB = setsB;
-            match.scoreA = s1A + s2A + s3A;
-            match.scoreB = s1B + s2B + s3B;
+            match.scoreA = sets.reduce((sum, [a]) => sum + a, 0);
+            match.scoreB = sets.reduce((sum, [, b]) => sum + b, 0);
 
             const setsElem = document.getElementById(`summary-sets-${matchId}`);
             const ballsElem = document.getElementById(`summary-balls-${matchId}`);
@@ -3429,11 +3429,11 @@
             if (ballsElem) ballsElem.innerText = `${match.scoreA}:${match.scoreB}`;
 
             // Handle UI validation states
-            let allValid = res1.valid && res2.valid && res3.valid;
-            let errReason = res1.reason || res2.reason || res3.reason;
+            const allValid = !errReason;
+            const firstEntered = sets.slice(0, 2).some(([a, b]) => a > 0 || b > 0);
 
             if (warnElem) {
-                if (!allValid && (s1A > 0 || s1B > 0 || s2A > 0 || s2B > 0)) {
+                if (!allValid && firstEntered) {
                     warnElem.innerText = `⚠️ ${errReason}`;
                     warnElem.classList.remove('hidden');
                 } else {
@@ -3443,7 +3443,7 @@
             }
 
             if (saveBtn) {
-                if (!allValid && !isTimeCap && (s1A > 0 || s1B > 0)) {
+                if (!allValid && !isTimeCap && (sets[0][0] > 0 || sets[0][1] > 0)) {
                     saveBtn.disabled = true;
                     saveBtn.className = "px-2.5 py-1 bg-slate-300 text-slate-500 font-bold rounded cursor-not-allowed";
                 } else {
@@ -3465,9 +3465,7 @@
                 if (m.status === 'COMPLETED') { // blanking a saved result back to 0:0 clears it
                     window.pushHistorySnapshot();
                     m.status = 'SCHEDULED';
-                    m.set1A = m.set1B = m.set2A = m.set2B = m.set3A = m.set3B = 0;
-                    m.setsA = m.setsB = m.scoreA = m.scoreB = 0;
-                    m.isTimeCap = false;
+                    Object.assign(m, emptyScore());
                     delete m.savedResult;
                     window.logEvent(`Ergebnis zurückgesetzt: ${m.id}`);
                     window.saveStateToLocalStorage();
@@ -3669,34 +3667,18 @@
                             </div>
 
                             <div class="text-[10px] text-slate-500 text-center bg-slate-50 rounded py-1 border">
-                                ${prof.name} · Sätze bis <strong>${prof.minSetPoints}</strong> · Satz 3 bis <strong>${prof.decidingSetMinPoints}</strong> · ${prof.minLeadPoints} Pkt Vorsprung
+                                ${prof.name} · Sätze bis <strong>${prof.minSetPoints}</strong>${setCountOf(prof) > 1 ? ` · Satz ${setCountOf(prof)} bis <strong>${prof.decidingSetMinPoints}</strong>` : ''} · ${prof.minLeadPoints} Pkt Vorsprung
                             </div>
 
-                            <div class="grid grid-cols-3 gap-2 text-center pt-2 border-t">
-                                <div>
-                                    <span class="text-[10px] text-slate-400 block">Satz 1</span>
+                            <div class="flex flex-wrap justify-around gap-2 text-center pt-2 border-t">
+                                ${Array.from({ length: setCountOf(prof) }, (_, i) => i + 1).map(k => `<div>
+                                    <span class="text-[10px] text-slate-400 block">Satz ${k}</span>
                                     <div class="flex justify-center gap-1">
-                                        <input type="number" id="s1A-${m.id}" min="0" value="${m.set1A || ''}" oninput="updateMatchScore(\'${m.id}\')" class="w-8 border rounded text-center font-mono">
+                                        <input type="number" id="s${k}A-${m.id}" min="0" value="${m[`set${k}A`] || ''}" oninput="updateMatchScore('${m.id}')" class="w-8 border rounded text-center font-mono">
                                         :
-                                        <input type="number" id="s1B-${m.id}" min="0" value="${m.set1B || ''}" oninput="updateMatchScore(\'${m.id}\')" class="w-8 border rounded text-center font-mono">
+                                        <input type="number" id="s${k}B-${m.id}" min="0" value="${m[`set${k}B`] || ''}" oninput="updateMatchScore('${m.id}')" class="w-8 border rounded text-center font-mono">
                                     </div>
-                                </div>
-                                <div>
-                                    <span class="text-[10px] text-slate-400 block">Satz 2</span>
-                                    <div class="flex justify-center gap-1">
-                                        <input type="number" id="s2A-${m.id}" min="0" value="${m.set2A || ''}" oninput="updateMatchScore(\'${m.id}\')" class="w-8 border rounded text-center font-mono">
-                                        :
-                                        <input type="number" id="s2B-${m.id}" min="0" value="${m.set2B || ''}" oninput="updateMatchScore(\'${m.id}\')" class="w-8 border rounded text-center font-mono">
-                                    </div>
-                                </div>
-                                <div>
-                                    <span class="text-[10px] text-slate-400 block">Satz 3</span>
-                                    <div class="flex justify-center gap-1">
-                                        <input type="number" id="s3A-${m.id}" min="0" value="${m.set3A || ''}" oninput="updateMatchScore(\'${m.id}\')" class="w-8 border rounded text-center font-mono">
-                                        :
-                                        <input type="number" id="s3B-${m.id}" min="0" value="${m.set3B || ''}" oninput="updateMatchScore(\'${m.id}\')" class="w-8 border rounded text-center font-mono">
-                                    </div>
-                                </div>
+                                </div>`).join('')}
                             </div>
 
                             <div class="flex items-center justify-between pt-1 text-[11px] text-slate-500">
@@ -3821,7 +3803,7 @@
                 const done = m.status === 'COMPLETED';
                 const future = !done && m.round >= curRound && !isSwiss;
                 const time = (showTimes && sched.startById[m.id] != null) ? window.fmtMin(sched.startById[m.id]) : '';
-                const sets = [[m.set1A, m.set1B], [m.set2A, m.set2B], [m.set3A, m.set3B]].filter(([a, b], i) => i === 0 || a || b);
+                const sets = [1, 2, 3, 4, 5].map(k => [m[`set${k}A`], m[`set${k}B`]]).filter(([a, b], i) => i === 0 || a || b);
                 const result = done ? `${m.setsA || 0}:${m.setsB || 0}<span class="print-only"> · ${sets.map(([a, b]) => `${a || 0}:${b || 0}`).join(' ')}${m.isTimeCap ? ' (Zeitablauf)' : ''}</span>`
                     : (m.status === 'CANCELLED' ? 'gestrichen' : '–');
                 return `<tr class="border-b border-slate-100 ${done ? 'text-slate-800' : (future ? 'text-slate-400' : 'text-slate-600')}">
@@ -4455,9 +4437,7 @@
                 block: baseBlock + Math.floor(idx / fieldCount) + 1,
                 phase: label,
                 teamAId, teamBId,
-                setsA: 0, setsB: 0, scoreA: 0, scoreB: 0,
-                set1A: 0, set1B: 0, set2A: 0, set2B: 0, set3A: 0, set3B: 0,
-                isTimeCap: false, refTeamId: null, refText: '',
+                ...emptyScore(), refTeamId: null, refText: '',
                 status: 'SCHEDULED'
             };
         }
@@ -4959,7 +4939,8 @@
         // Base (tmgr_cloud_base_v1): the last state this device knows is online — the common ancestor for merging.
         const BASE_KEY = 'tmgr_cloud_base_v1';
         function getBase(id) {
-            try { const b = JSON.parse(localStorage.getItem(BASE_KEY)); return b && b.id === id ? b : null; }
+            // normalized like every other state, so a base stored by an older version compares field for field
+            try { const b = JSON.parse(localStorage.getItem(BASE_KEY)); return b && b.id === id ? { ...b, body: normalizedCopy(b.body) } : null; }
             catch (e) { console.error('Online-Basis unlesbar:', e); return null; }
         }
         function setBase(id, version, body) {
@@ -5052,7 +5033,7 @@
             window.resyncUI();
             restoreTyping(typing);
             renderCloudStatus();
-            if (same && ledBefore && !amLeader()) uiToast(`Die Leitung hat jetzt „${appState.leader.label}“ – hier nur noch Ergebnis-Eingabe.`);
+            if (same && ledBefore && !amLeader()) uiToast(`Die Turbierleitung hat jetzt „${appState.leader.label}“ – hier nur noch Ergebnis-Eingabe.`);
         }
 
         // ---- Leitungsgerät: one device owns the plan; results from any device are combined per game ----
@@ -5143,19 +5124,19 @@
             el.classList.toggle('hidden', !follower);
             if (!follower) return;
             const t = document.getElementById('cloud-role-text');
-            t.textContent = `Nur Ergebnisse · Leitung: ${appState.leader.label}`;
-            t.title = `Nur Ergebnis-Eingabe – den Spielplan ändert die Leitung: ${appState.leader.label}`;
+            t.textContent = `Nur Ergebnisse · Turbierleitung: ${appState.leader.label}`;
+            t.title = `Nur Ergebnis-Eingabe – den Spielplan ändert die Turbierleitung: ${appState.leader.label}`;
         }
         async function takeLead() {
             const b = getBinding();
             if (!b || amLeader()) return;
-            const ok = await confirmAsync(`Leitung übernehmen? Dann kann nur noch dieses Gerät den Spielplan ändern; „${appState.leader.label}“ trägt danach nur noch Ergebnisse ein.`);
+            const ok = await confirmAsync(`Turbierleitung übernehmen? Dann kann nur noch dieses Gerät den Spielplan ändern; „${appState.leader.label}“ trägt danach nur noch Ergebnisse ein.`);
             if (!ok || !getBinding() || getBinding().id !== b.id) return;
             appState.leader = myLeader();
             window.saveStateToLocalStorage();
             uploadNow();
             renderCloudStatus();
-            uiToast('Dieses Gerät hat jetzt die Leitung.');
+            uiToast('Dieses Gerät hat jetzt die Turbierleitung.');
         }
         window.takeLead = takeLead;
 
@@ -5243,7 +5224,7 @@
                 if (base && planKey(sanitizeForCloud(appState)) !== planKey(base.body)) {
                     const c = combineStates(base.body, sanitizeForCloud(appState), base.body, deviceId());
                     applyOnline(b.id, { meta: { name: b.name }, state: base.body, version: b.version }, c.state);
-                    uiToast(`Den Spielplan ändert nur die Leitung („${appState.leader.label}“). Hier nur Ergebnisse – oder oben „Übernehmen“ tippen.`, 'error');
+                    uiToast(`Den Spielplan ändert nur die Turbierleitung („${appState.leader.label}“). Hier nur Ergebnisse – oder oben „Übernehmen“ tippen.`, 'error');
                     return;
                 }
             }
@@ -5329,7 +5310,7 @@
         function finishCombine(b, doc, c) {
             if (c.droppedPlan) {
                 window.exportTmgrFile(); // this device's plan changes cannot go online: keep them as a file
-                uiToast(`Spielplan-Änderungen von diesem Gerät wurden nicht übernommen – die Leitung hat „${c.state.leader ? c.state.leader.label : 'ein anderes Gerät'}“. Sicherung heruntergeladen.`, 'error');
+                uiToast(`Spielplan-Änderungen von diesem Gerät wurden nicht übernommen – die Turbierleitung hat „${c.state.leader ? c.state.leader.label : 'ein anderes Gerät'}“. Sicherung heruntergeladen.`, 'error');
             }
             if (c.lostResults.length) {
                 uiToast('Nicht übernommen (Spiel gestrichen/entfernt): ' + c.lostResults.map(m => `${teamName(m.teamAId)} – ${teamName(m.teamBId)} ${m.setsA}:${m.setsB}`).join('; '), 'error');
