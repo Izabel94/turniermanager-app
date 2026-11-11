@@ -207,7 +207,7 @@
                 <span>&#128202;</span> Live-Tabelle
             </button>
             <button id="nav-season" onclick="switchNav('season')" class="touch-btn shrink-0 px-3 py-2 rounded-lg hover:text-gray-900 transition flex items-center gap-1.5 whitespace-nowrap">
-                <span>&#128197;</span> Gesamttabelle
+                Gesamttabelle
             </button>
             <button id="nav-referee" onclick="switchNav('referee')" class="touch-btn shrink-0 px-3 py-2 rounded-lg hover:text-gray-900 transition flex items-center gap-1.5 whitespace-nowrap">
                 <span>&#9878;</span> Schiri-Fairness
@@ -1722,6 +1722,7 @@
                         window.saveStateToLocalStorage();
                         window.resyncUI();
                         uiToast('Turnier erfolgreich geladen.');
+                        ensureOnline(); // a loaded day with city and date goes into the database like a typed one
                     };
                     const bound = getBinding();
                     if (bound) uiConfirm('Datei laden?' + unbindNote(bound), apply);
