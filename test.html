@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>TurnierManager 1.23.0 - Volleyball Edition</title>
+    <title>TurnierManager 1.24.0 - Volleyball Edition</title>
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Chart.js -->
@@ -131,7 +131,7 @@
     <header class="bg-neutral-50 text-gray-800 border-b border-gray-200">
         <div class="max-w-7xl mx-auto px-4 py-2.5 flex flex-wrap justify-between items-center gap-3">
             <div class="flex items-center gap-3">
-                <span class="bg-gray-800 text-white font-black px-2 py-0.5 rounded text-xs tracking-wider">TMGR v1.23.0</span>
+                <span class="bg-gray-800 text-white font-black px-2 py-0.5 rounded text-xs tracking-wider">TMGR v1.24.0</span>
                 <div>
                     <h1 id="header-tournament-name" class="font-bold text-sm sm:text-base leading-tight">TurnierManager</h1>
                     <p class="text-[10px] text-gray-500 flex items-center gap-1.5">
@@ -1305,9 +1305,13 @@
         }
         window.setCountOf = setCountOf;
         function profileForRound(r) {
-            const id = (appState.roundProfileMap && appState.roundProfileMap[r]) || 'PROF-STD';
-            return appState.gameProfiles.find(p => p.id === id)
-                || appState.gameProfiles[0]
+            // own choice for the round, else the "Alle Runden" choice (also for rounds added later), else Standard
+            const ids = [appState.roundProfileMap && appState.roundProfileMap[r], appState.tournament.laterRoundsProfileId, 'PROF-STD'];
+            for (const id of ids) {
+                const p = id && appState.gameProfiles.find(x => x.id === id);
+                if (p) return p;
+            }
+            return appState.gameProfiles[0]
                 || { matchDurationMin: 20, pauseDurationMin: 5, minSetPoints: 25, decidingSetMinPoints: 15, minLeadPoints: 2 };
         }
         window.profileForRound = profileForRound;
@@ -2013,6 +2017,7 @@
                 appState.byes = [];
                 appState.log = [];
                 appState.roundProfileMap = { 1: 'PROF-STD', 2: 'PROF-STD', 3: 'PROF-STD', 4: 'PROF-STD', 5: 'PROF-STD' };
+                delete appState.tournament.laterRoundsProfileId;
                 appState.teams = window.sampleTeamNames.map(n => newTeam(n, 'REGULAR'));
                 window.logEvent('Neues Turnier gestartet');
                 window.saveStateToLocalStorage();
@@ -2378,10 +2383,13 @@
         function assignAllRoundsProfile(profileId) {
             if (!appState.gameProfiles.some(p => p.id === profileId)) return;
             window.pushHistorySnapshot();
-            appState.roundProfileMap = appState.roundProfileMap || {};
-            openProfileRounds().forEach(r => { appState.roundProfileMap[r] = profileId; });
+            const map = appState.roundProfileMap = appState.roundProfileMap || {};
+            // rounds that already have games keep the profile they have now, even without their own choice
+            appState.matches.forEach(m => { if (!map[m.round]) map[m.round] = profileForRound(m.round).id; });
+            openProfileRounds().forEach(r => { map[r] = profileId; });
             appState.tournament.finalsProfileId = profileId;
             appState.tournament.zwischenProfileId = profileId;
+            appState.tournament.laterRoundsProfileId = profileId;
             ['sel-finals-profile', 'sel-zwischen-profile'].forEach(id => { const el = document.getElementById(id); if (el) el.value = profileId; });
             window.calculateForecast();
             window.saveStateToLocalStorage();
@@ -3667,7 +3675,7 @@
 
             if (warnElem) {
                 if (!allValid && firstEntered) {
-                    warnElem.innerText = `⚠️ ${errReason}`;
+                    warnElem.innerText = `⚠️ ${errReason}\nSpiel durch Zeitablauf beendet? ⋯ oben rechts → „Zeitablauf“.`;
                     warnElem.classList.remove('hidden');
                 } else {
                     warnElem.innerText = '';
@@ -5026,8 +5034,13 @@
         function clearBinding() { if (VIEWER) return; try { localStorage.removeItem(BINDING_KEY); } catch (e) { console.error(e); } }
         window.getBinding = getBinding; window.setBinding = setBinding; window.clearBinding = clearBinding;
         // Used by every action that replaces the tournament on this device (Neues Turnier, .tmgr laden, Vorlage laden).
+        function unsentNote(b) {
+            if (!b || !b.dirty) return '';
+            uploadNow();
+            return ' Achtung: Die letzten Änderungen sind noch nicht online. Erst warten, bis oben „Online gespeichert“ steht.';
+        }
         function unbindNote(b) {
-            return b ? ` Die Verbindung zu „${appState.tournament.name}“ in der Datenbank wird dabei getrennt – dort bleibt es erhalten und lässt sich über „Turnier öffnen“ wieder öffnen. Rückgängig ist danach nicht möglich.` : '';
+            return b ? unsentNote(b) + ` Die Verbindung zu „${appState.tournament.name}“ in der Datenbank wird dabei getrennt – dort bleibt es erhalten und lässt sich über „Turnier öffnen“ wieder öffnen. Rückgängig ist danach nicht möglich.` : '';
         }
         function unbindForReplace(b) {
             if (!b) return false;
@@ -5159,7 +5172,7 @@
 
         async function openOnline(id, confirmed) {
             if (!window.cloud) return;
-            const ok = confirmed || await confirmAsync('Das Turnier auf diesem Gerät wird ersetzt. Vorher wird eine .tmgr-Sicherung davon heruntergeladen.');
+            const ok = confirmed || await confirmAsync('Das Turnier auf diesem Gerät wird ersetzt. Vorher wird eine .tmgr-Sicherung davon heruntergeladen.' + unsentNote(getBinding()));
             if (!ok) return;
             try {
                 const doc = await window.cloud.load(id);
@@ -5456,6 +5469,7 @@
             now.archived = !t.archived;
             window.logEvent(now.archived ? 'Spieltag archiviert' : 'Spieltag aus dem Archiv geholt');
             window.saveStateToLocalStorage();
+            uploadNow();
             renderTournamentIdentity();
             uiToast(now.archived ? `„${now.name}“ ist archiviert.` : `„${now.name}“ ist wieder bei den laufenden Spieltagen.`);
         }
@@ -5561,6 +5575,8 @@
         // Leitung. Only the same game with two different results is asked about.
         async function resolveConflict(b, sent) {
             const doc = await withTimeout(window.cloud.load(b.id));
+            const now = getBinding();
+            if (!now || now.id !== b.id) return; // the tournament here was replaced meanwhile: it must not go online under the old day
             if (!doc) { connectionGone(b); return; }
             const online = normalizedCopy(doc.state);
             if (cloudHash(online) === cloudHash(sent)) { // my own save got through, only its reply was lost
