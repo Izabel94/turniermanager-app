@@ -6193,17 +6193,17 @@
             li.append(label);
             return li;
         }
-        // The year's archived days plus every ticked day (a ticked day keeps counting when it leaves the archive).
+        // Every match day of the year, running or archived, plus every ticked day.
         function renderSeasonDays() {
             const v = seasonView;
             const ticked = id => v.settings.days.includes(id);
-            const days = v.list.filter(t => ticked(t.id) || (t.archived && seasonYearOf(t) === v.year))
+            const days = v.list.filter(t => ticked(t.id) || seasonYearOf(t) === v.year)
                 .sort((a, b) => Number(ticked(b.id)) - Number(ticked(a.id)) || String(a.date || '').localeCompare(String(b.date || '')));
             const gone = v.settings.days.filter(id => !v.list.some(t => t.id === id)).map(id => ({ id }));
             const items = [...gone, ...days].map(t => seasonCheckRow(seasonDayName(t.id), ticked(t.id), { day: t.id }, on => toggleSeasonDay(t.id, on)));
             const empty = document.createElement('li');
             empty.className = 'py-2 text-gray-500';
-            empty.textContent = `Keine archivierten Spieltage ${v.year}.`;
+            empty.textContent = `Keine Spieltage ${v.year}.`;
             document.getElementById('season-days').replaceChildren(...(items.length ? items : [empty]));
         }
 
