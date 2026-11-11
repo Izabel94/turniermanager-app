@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>TurnierManager 1.24.0 - Volleyball Edition</title>
+    <title>TurnierManager 1.25.0 - Volleyball Edition</title>
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Chart.js -->
@@ -27,7 +27,7 @@
            pinned to the right edge of the team table. */
         .nav-sticky-touch { position: sticky; top: 0; z-index: 40; }
         /* Live link (?live=…): only the read-only viewer is on the page. */
-        body.viewer-mode > :not(#viewer):not(#ui-toast) { display: none !important; }
+        body.viewer-mode > :not(#viewer):not(#season-public):not(#ui-toast) { display: none !important; }
         #nav-menu-toggle { display: none; }
         @media (pointer: coarse) {
             #nav-menu-toggle { display: flex; justify-content: flex-start; }
@@ -127,11 +127,20 @@
         </div>
     </main>
 
+    <main id="season-public" class="hidden w-full p-4 space-y-4">
+        <header class="space-y-1">
+            <h1 id="season-public-title" class="text-xl font-black text-gray-900"></h1>
+            <p id="season-public-stand" class="hidden text-xs text-gray-500"></p>
+        </header>
+        <p id="season-public-message" class="text-sm text-gray-600 bg-white border border-gray-200 rounded-xl p-4">Lädt …</p>
+        <div id="season-public-table" class="hidden bg-white border border-gray-200 rounded-xl p-2 shadow-sm"></div>
+    </main>
+
     <!-- Header + nav (normal flow — no fixed positioning, adapts to any screen) -->
     <header class="bg-neutral-50 text-gray-800 border-b border-gray-200">
         <div class="max-w-7xl mx-auto px-4 py-2.5 flex flex-wrap justify-between items-center gap-3">
             <div class="flex items-center gap-3">
-                <span class="bg-gray-800 text-white font-black px-2 py-0.5 rounded text-xs tracking-wider">TMGR v1.24.0</span>
+                <span class="bg-gray-800 text-white font-black px-2 py-0.5 rounded text-xs tracking-wider">TMGR v1.25.0</span>
                 <div>
                     <h1 id="header-tournament-name" class="font-bold text-sm sm:text-base leading-tight">TurnierManager</h1>
                     <p class="text-[10px] text-gray-500 flex items-center gap-1.5">
@@ -196,6 +205,9 @@
             </button>
             <button id="nav-standings" onclick="switchNav('standings')" class="touch-btn shrink-0 px-3 py-2 rounded-lg hover:text-gray-900 transition flex items-center gap-1.5 whitespace-nowrap">
                 <span>&#128202;</span> Live-Tabelle
+            </button>
+            <button id="nav-season" onclick="switchNav('season')" class="touch-btn shrink-0 px-3 py-2 rounded-lg hover:text-gray-900 transition flex items-center gap-1.5 whitespace-nowrap">
+                Gesamttabelle
             </button>
             <button id="nav-referee" onclick="switchNav('referee')" class="touch-btn shrink-0 px-3 py-2 rounded-lg hover:text-gray-900 transition flex items-center gap-1.5 whitespace-nowrap">
                 <span>&#9878;</span> Schiri-Fairness
@@ -311,6 +323,7 @@
                             </div>
                         </div>
                         <datalist id="known-cities"></datalist>
+                        <datalist id="season-team-names"></datalist>
                         <div>
                             <label class="block text-gray-600 font-semibold mb-1" for="input-tname">Name</label>
                             <input type="text" id="input-tname" maxlength="60" autocomplete="off" onchange="updateTournamentConfig()" class="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-800 font-medium text-gray-800">
@@ -584,7 +597,7 @@
                     </div>
 
                     <div class="flex gap-2">
-                        <input type="text" id="input-new-team" placeholder="Teamname eingeben (z.B. TSV Linden)..." onkeydown="if(event.key==='Enter') addTeam()" class="flex-grow min-w-0 px-3 py-2 border rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-gray-800 font-medium">
+                        <input type="text" id="input-new-team" list="season-team-names" autocomplete="off" placeholder="Teamname eingeben (z.B. TSV Linden)..." onkeydown="if(event.key==='Enter') addTeam()" class="flex-grow min-w-0 px-3 py-2 border rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-gray-800 font-medium">
                         <button onclick="addTeam()" class="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-white font-bold rounded-lg text-xs transition whitespace-nowrap">
                             + Team Hinzufügen
                         </button>
@@ -714,7 +727,7 @@
             <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 <div id="standings-single" class="lg:col-span-2 bg-white border border-gray-200 rounded-xl p-5 shadow-sm space-y-4">
                     <h2 class="font-bold text-base text-gray-800 border-b pb-2 flex justify-between items-center">
-                        <span>Aktuelle Gesamttabelle</span>
+                        <span>Aktuelle Tabelle</span>
                         <span id="badge-total-matches" class="text-xs text-gray-500 font-normal">0 Spiele absolviert</span>
                     </h2>
 
@@ -763,6 +776,43 @@
                                 Finale &amp; Spiel um Platz 3 erzeugen
                             </button>
                         </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- TAB: GESAMTTABELLE (season table over the ticked match days of a year) -->
+        <section id="tab-season" class="space-y-6 hidden">
+            <div class="bg-white border border-gray-200 rounded-xl p-3 sm:p-5 shadow-sm space-y-4">
+                <div class="flex flex-wrap justify-between items-center gap-2 border-b pb-2">
+                    <h2 id="season-title" class="font-bold text-base text-gray-800">Gesamttabelle</h2>
+                    <select id="season-year" onchange="openSeason(Number(this.value))" aria-label="Saison" class="hidden px-2 py-1 bg-white border rounded-md text-xs font-semibold text-gray-800"></select>
+                </div>
+                <div id="season-notes" class="space-y-1 text-xs font-semibold text-amber-800"></div>
+                <div id="season-table"></div>
+            </div>
+            <div id="season-admin" class="hidden grid grid-cols-1 lg:grid-cols-2 gap-6 text-xs text-gray-800">
+                <div class="bg-white border border-gray-200 rounded-xl p-3 sm:p-5 shadow-sm space-y-2">
+                    <h3 class="font-bold text-sm border-b pb-2">Gewertete Spieltage</h3>
+                    <p class="text-gray-500">Angekreuzte Spieltage zählen für die Gesamttabelle.</p>
+                    <ul id="season-days" class="divide-y divide-gray-100"></ul>
+                </div>
+                <div id="season-names" class="hidden bg-white border border-amber-300 rounded-xl p-3 sm:p-5 shadow-sm space-y-2">
+                    <h3 class="font-bold text-sm border-b pb-2">Neue Namen</h3>
+                    <p class="text-gray-500">Diese Namen gab es an früheren Spieltagen noch nicht. Dasselbe Team unter anderem Namen: „gehört zu …“, sonst „neu“.</p>
+                    <ul id="season-names-list" class="divide-y divide-gray-100"></ul>
+                </div>
+                <div class="bg-white border border-gray-200 rounded-xl p-3 sm:p-5 shadow-sm space-y-2">
+                    <h3 class="font-bold text-sm border-b pb-2">Spiele herausnehmen</h3>
+                    <p class="text-gray-500">Spiele ohne Haken zählen nicht für die Gesamttabelle.</p>
+                    <div id="season-games" class="space-y-2"></div>
+                </div>
+                <div class="bg-white border border-gray-200 rounded-xl p-3 sm:p-5 shadow-sm space-y-2">
+                    <h3 class="font-bold text-sm border-b pb-2">Öffentlicher Link</h3>
+                    <p class="text-gray-500">Zeigt die Gesamttabelle ohne Anmeldung.</p>
+                    <div class="flex flex-wrap items-center gap-2">
+                        <input id="season-link-url" readonly onfocus="this.select()" aria-label="Öffentlicher Link" class="flex-1 min-w-0 bg-white border rounded p-2 text-xs text-gray-800">
+                        <button type="button" onclick="copySeasonLink()" class="px-3 py-1.5 bg-gray-800 text-white rounded text-xs font-bold hover:bg-gray-700 whitespace-nowrap">Kopieren</button>
                     </div>
                 </div>
             </div>
@@ -887,7 +937,7 @@
             <div class="grid grid-cols-2 gap-3 text-xs">
                 <div class="col-span-2">
                     <label class="block font-semibold mb-1" for="team-f-name">Teamname *</label>
-                    <input type="text" id="team-f-name" class="w-full border rounded p-2 font-bold">
+                    <input type="text" id="team-f-name" list="season-team-names" autocomplete="off" class="w-full border rounded p-2 font-bold">
                 </div>
                 <div>
                     <label class="block font-semibold mb-1" for="team-f-club">Verein</label>
@@ -1022,7 +1072,11 @@
         // Live link for teams and spectators: ?live=<online tournament id> opens a read-only viewer that never
         // writes to this device (no local save, no connection, no device id).
         const LIVE_ID = new URLSearchParams(location.search).get('live');
-        const VIEWER = !!LIVE_ID;
+        // Public season table: ?saison=<year> is just as read-only; SEASON_YEAR is null when the value is no positive integer.
+        const SEASON_PARAM = new URLSearchParams(location.search).get('saison');
+        const SEASON_YEAR = SEASON_PARAM !== null && Number.isSafeInteger(Number(SEASON_PARAM)) && Number(SEASON_PARAM) > 0
+            && String(Number(SEASON_PARAM)) === SEASON_PARAM ? Number(SEASON_PARAM) : null;
+        const VIEWER = !!LIVE_ID || SEASON_PARAM !== null;
         // --- IN-APP DIALOGS (non-blocking, replace native alert/confirm/prompt) ---
         function uiToast(msg, type) {
             const c = document.getElementById('ui-toast');
@@ -1668,6 +1722,7 @@
                         window.saveStateToLocalStorage();
                         window.resyncUI();
                         uiToast('Turnier erfolgreich geladen.');
+                        ensureOnline(); // a loaded day with city and date goes into the database like a typed one
                     };
                     const bound = getBinding();
                     if (bound) uiConfirm('Datei laden?' + unbindNote(bound), apply);
@@ -1749,7 +1804,7 @@
 
         // --- NAVIGATION ---
         function switchNav(navId) {
-            ['dashboard', 'setup', 'profiles', 'teams', 'matches', 'standings', 'referee'].forEach(id => {
+            ['dashboard', 'setup', 'profiles', 'teams', 'matches', 'standings', 'season', 'referee'].forEach(id => {
                 const el = document.getElementById(`tab-${id}`);
                 const btn = document.getElementById(`nav-${id}`);
                 if (el) el.classList.add('hidden');
@@ -1764,6 +1819,7 @@
 
             if (navId === 'dashboard') window.renderDashboard();
             if (navId === 'standings') window.updateStandingsView();
+            if (navId === 'season') window.openSeason();
             if (navId === 'referee') window.updateRefereeView();
             if (navId === 'profiles') window.renderProfilesAndSlots();
             if (navId === 'matches') window.renderMatches();
@@ -4117,6 +4173,20 @@
         window.renderGroupOverview = renderGroupOverview;
 
         // --- STANDINGS ENGINE ---
+        // One game's contribution to both sides, shared by the day table and the season table.
+        // `t` is the tournament of the day the game was played on. Returns null when the game does not count.
+        function gameResult(m, t) {
+            const setsA = m.setsA || 0, setsB = m.setsB || 0;
+            const scoreA = m.scoreA || 0, scoreB = m.scoreB || 0;
+            if (m.status !== 'COMPLETED' || scoreA + scoreB === 0) return null;
+            const aWins = setsA > setsB, bWins = setsB > setsA, draw = setsA === setsB;
+            return {
+                a: { points: aWins ? t.winPoints : draw ? t.drawPoints : 0, setsFor: setsA, setsAgainst: setsB, ballsFor: scoreA, ballsAgainst: scoreB, win: aWins, draw },
+                b: { points: bWins ? t.winPoints : draw ? t.drawPoints : 0, setsFor: setsB, setsAgainst: setsA, ballsFor: scoreB, ballsAgainst: scoreA, win: bWins, draw }
+            };
+        }
+        window.gameResult = gameResult;
+
         // Standings over a match scope. Default scope = base stage (no finals, no Zwischenrunde),
         // so the Vorrunde table never absorbs later-round results. Callers showing the Zwischenrunde
         // or seeding a stage pass that stage's matches (e.g. currentStageMatches()).
@@ -4142,43 +4212,24 @@
                 };
             });
 
-            scope.filter(m => m.status === 'COMPLETED' && ((m.scoreA || 0) + (m.scoreB || 0) > 0)).forEach(m => {
+            scope.forEach(m => {
                 const sA = standingsMap[m.teamAId];
                 const sB = standingsMap[m.teamBId];
-
-                if (sA && sB) {
-                    sA.played += 1;
-                    sB.played += 1;
-                    sA.setsFor += (m.setsA || 0);
-                    sA.setsAgainst += (m.setsB || 0);
-                    sB.setsFor += (m.setsB || 0);
-                    sB.setsAgainst += (m.setsA || 0);
-
-                    sA.ballsFor += (m.scoreA || 0);
-                    sA.ballsAgainst += (m.scoreB || 0);
-                    sB.ballsFor += (m.scoreB || 0);
-                    sB.ballsAgainst += (m.scoreA || 0);
-
-                    if ((m.setsA || 0) > (m.setsB || 0)) {
-                        sA.wins += 1;
-                        sA.points += appState.tournament.winPoints;
-                        sB.losses += 1;
-                    } else if ((m.setsB || 0) > (m.setsA || 0)) {
-                        sB.wins += 1;
-                        sB.points += appState.tournament.winPoints;
-                        sA.losses += 1;
-                    } else {
-                        sA.draws += 1;
-                        sB.draws += 1;
-                        sA.points += appState.tournament.drawPoints;
-                        sB.points += appState.tournament.drawPoints;
-                    }
-
-                    sA.setDiff = sA.setsFor - sA.setsAgainst;
-                    sB.setDiff = sB.setsFor - sB.setsAgainst;
-                    sA.ballDiff = sA.ballsFor - sA.ballsAgainst;
-                    sB.ballDiff = sB.ballsFor - sB.ballsAgainst;
-                }
+                const result = gameResult(m, appState.tournament);
+                if (!result || !sA || !sB) return;
+                [[sA, result.a], [sB, result.b]].forEach(([row, side]) => {
+                    row.played += 1;
+                    row.setsFor += side.setsFor;
+                    row.setsAgainst += side.setsAgainst;
+                    row.ballsFor += side.ballsFor;
+                    row.ballsAgainst += side.ballsAgainst;
+                    row.points += side.points;
+                    if (side.win) row.wins += 1;
+                    else if (side.draw) row.draws += 1;
+                    else row.losses += 1;
+                    row.setDiff = row.setsFor - row.setsAgainst;
+                    row.ballDiff = row.ballsFor - row.ballsAgainst;
+                });
             });
 
             // Opponents + Buchholz (sum of opponents' points)
@@ -4225,6 +4276,116 @@
         }
         window.calculateStandings = calculateStandings;
 
+        // --- SEASON TABLE ---
+        // Pure: takes the stored states of match days plus the season settings, touches no appState and no DOM.
+        function seasonKey(name) { return String(name == null ? '' : name).trim().toLowerCase(); }
+        window.seasonKey = seasonKey;
+
+        function isSeasonJoker(team) { return team.type === 'JOKER' || !!team.excludeFromRanking; }
+        // A stored day the season table can read; any other is treated like a day that could not be loaded.
+        function seasonDayUsable(state) { return !!state && Array.isArray(state.teams) && !!state.tournament; }
+        window.seasonDayUsable = seasonDayUsable;
+
+        // Ticked days that have a usable stored state, earliest first (date, then id).
+        function seasonTickedDays(days, settings) {
+            return days
+                .filter(d => settings.days.includes(d.id) && seasonDayUsable(d.state))
+                .sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')) || String(a.id).localeCompare(String(b.id)));
+        }
+
+        // A game against a Joker counts only in the normal rounds and only if every team that played that day
+        // played that Joker equally often (at least once); otherwise none of that day's games against it count.
+        function seasonJokerIsFair(joker, playingIds, played) {
+            const vsJoker = (m, id) =>
+                (m.teamAId === id && m.teamBId === joker.id) || (m.teamBId === id && m.teamAId === joker.id);
+            const counts = playingIds.map(id =>
+                played.filter(({ game: m }) => !isFinalsMatch(m) && !isZwischenMatch(m) && vsJoker(m, id)).length);
+            return counts.length > 0 && counts[0] >= 1 && counts.every(n => n === counts[0]);
+        }
+
+        // The day's finished games that are not taken out and whose two teams are still on the day,
+        // as { game, result }.
+        function seasonPlayedGames(day, skipIds) {
+            const { teams, matches, tournament } = day.state;
+            const onDay = new Set(teams.map(t => t.id));
+            return (matches || []).filter(m => !skipIds.includes(m.id) && onDay.has(m.teamAId) && onDay.has(m.teamBId))
+                .map(m => ({ game: m, result: gameResult(m, tournament) })).filter(p => p.result);
+        }
+
+        // The day's games that count for the season (as { game, result })
+        // and the ids of the non-Joker teams that played.
+        function seasonCountedGames(day, skipIds) {
+            const played = seasonPlayedGames(day, skipIds);
+            const jokers = day.state.teams.filter(isSeasonJoker);
+            const jokerIds = jokers.map(j => j.id);
+            const playedIds = new Set(played.flatMap(({ game }) => [game.teamAId, game.teamBId]));
+            const playingIds = day.state.teams.filter(t => !isSeasonJoker(t) && playedIds.has(t.id)).map(t => t.id);
+            const fairJokerIds = jokers.filter(j => seasonJokerIsFair(j, playingIds, played)).map(j => j.id);
+            const counted = played.filter(({ game: m }) => {
+                const jokerSides = [m.teamAId, m.teamBId].filter(id => jokerIds.includes(id));
+                return jokerSides.length === 0 ||
+                    (jokerSides.length === 1 && !isFinalsMatch(m) && !isZwischenMatch(m) && fairJokerIds.includes(jokerSides[0]));
+            });
+            return { counted, playingIds };
+        }
+        window.seasonCountedGames = seasonCountedGames;
+
+        function computeSeasonTable(days, settings) {
+            const aliases = settings.aliases || {};
+            const skipGames = settings.skipGames || {};
+            const identityOf = name => { const key = seasonKey(name); return key in aliases ? seasonKey(aliases[key]) : key; };
+            const rowsByIdentity = {};
+            const unknownNames = [];
+            const seenIds = new Set();
+            const rowFor = (name) => {
+                const id = identityOf(name);
+                if (!rowsByIdentity[id]) {
+                    const key = seasonKey(name);
+                    rowsByIdentity[id] = { name: key in aliases ? String(aliases[key]).trim() : String(name).trim(),
+                        days: 0, games: 0, points: 0, setsFor: 0, setsAgainst: 0, ballsFor: 0, ballsAgainst: 0 };
+                }
+                return rowsByIdentity[id];
+            };
+
+            seasonTickedDays(days, settings).forEach((day, index) => {
+                const { counted, playingIds } = seasonCountedGames(day, skipGames[day.id] || []);
+                const teamsById = {};
+                const dayRows = new Set();
+                const dayIds = new Set();
+                day.state.teams.filter(t => playingIds.includes(t.id)).forEach(t => {
+                    teamsById[t.id] = rowFor(t.name);
+                    dayRows.add(teamsById[t.id]);
+                    const key = seasonKey(t.name), id = identityOf(t.name);
+                    const isNew = index > 0 && !(key in aliases) && !seenIds.has(id) && !dayIds.has(id);
+                    if (isNew) unknownNames.push({ dayId: day.id, name: String(t.name).trim() });
+                    dayIds.add(id);
+                });
+                dayIds.forEach(id => seenIds.add(id));
+                dayRows.forEach(row => { row.days += 1; });
+                counted.forEach(({ game, result }) => {
+                    [[teamsById[game.teamAId], result.a], [teamsById[game.teamBId], result.b]].forEach(([row, side]) => {
+                        if (!row) return;
+                        row.games += 1;
+                        row.points += side.points;
+                        row.setsFor += side.setsFor; row.setsAgainst += side.setsAgainst;
+                        row.ballsFor += side.ballsFor; row.ballsAgainst += side.ballsAgainst;
+                    });
+                });
+            });
+
+            const diffs = r => [r.points, r.setsFor - r.setsAgainst, r.ballsFor - r.ballsAgainst];
+            const rows = Object.values(rowsByIdentity).sort((a, b) => {
+                const [pa, sa, ba] = diffs(a), [pb, sb, bb] = diffs(b);
+                return pb - pa || sb - sa || bb - ba;
+            });
+            rows.forEach((row, i) => {
+                const prev = rows[i - 1];
+                row.place = prev && diffs(prev).join() === diffs(row).join() ? prev.place : i + 1;
+            });
+            return { rows, unknownNames };
+        }
+        window.computeSeasonTable = computeSeasonTable;
+
         function updateStandingsView() {
             updateRoundBadge();
             window.renderFinalsModeBanner();
@@ -4266,13 +4427,14 @@
 
         // Touch screens: scale each standings table down so all its columns fit the width it has (never up).
         // Both widths are measured live, so it works for any screen, rotation, font or team name.
+        function fitTableToWidth(t) {
+            t.style.zoom = '';
+            const ratio = t.parentElement.clientWidth / t.parentElement.scrollWidth;
+            if (Number.isFinite(ratio) && ratio < 1) t.style.zoom = Math.floor(ratio * 1000) / 1000;
+        }
         function fitStandingsTables() {
             if (!window.matchMedia('(pointer: coarse)').matches) return;
-            document.querySelectorAll('#standings-single table, #standings-groups table').forEach(t => {
-                t.style.zoom = '';
-                const ratio = t.parentElement.clientWidth / t.parentElement.scrollWidth;
-                if (Number.isFinite(ratio) && ratio < 1) t.style.zoom = Math.floor(ratio * 1000) / 1000;
-            });
+            document.querySelectorAll('#standings-single table, #standings-groups table').forEach(fitTableToWidth);
         }
         window.fitStandingsTables = fitStandingsTables;
         // Refit when the tab's width changes (shown, rotated, resized) — next frame, so the zoom's own height change
@@ -4286,6 +4448,75 @@
             requestAnimationFrame(fitStandingsTables);
         }).observe(standingsTab);
         if (document.fonts) document.fonts.ready.then(fitStandingsTables);
+
+        // Read-only season table of the Gesamttabelle tab into `el`. `result` is computeSeasonTable's.
+        // Touch screens: scaled to the width it has, like the day table, and refitted when that width changes.
+        const seasonTableWidths = new WeakMap();
+        function fitSeasonTable(el) {
+            const t = el.querySelector('table');
+            if (t && window.matchMedia('(pointer: coarse)').matches) fitTableToWidth(t);
+        }
+        function renderSeasonTable(el, result) {
+            if (!result.rows.length) {
+                el.innerHTML = '<p class="text-xs text-gray-500">Noch keine Ergebnisse.</p>';
+                return;
+            }
+            const num = 'px-1.5 py-2 text-center font-mono whitespace-nowrap';
+            const rows = result.rows.map(r => `
+                <tr class="hover:bg-gray-50 ${r.place === 1 ? 'bg-amber-50/30' : ''}">
+                    <td class="${num} font-bold text-gray-700">${Number(r.place)}</td>
+                    <td class="px-1.5 py-2 font-semibold text-gray-900 break-words">${escapeHtml(r.name)}</td>
+                    <td class="${num}">${Number(r.days)}</td>
+                    <td class="${num}">${Number(r.games)}</td>
+                    <td class="${num} font-bold text-gray-800 text-sm">${Number(r.points)}</td>
+                    <td class="${num}">${Number(r.setsFor)}:${Number(r.setsAgainst)}</td>
+                    <td class="${num}">${Number(r.ballsFor)}:${Number(r.ballsAgainst)}</td>
+                </tr>`).join('');
+            const head = ['Platz', 'Team', 'Spiel&shy;tage', 'Spiele', 'Punkte', 'Sätze', 'Bälle']
+                .map((h, i) => `<th class="px-1.5 py-2 ${i === 1 ? '' : 'text-center'} ${i === 4 ? 'font-bold text-gray-900' : ''}">${h}</th>`).join('');
+            el.innerHTML = `<div class="overflow-x-auto"><table class="w-full text-left text-xs border-collapse">
+                <thead><tr class="bg-gray-100 text-gray-600 border-b font-mono text-xs uppercase">${head}</tr></thead>
+                <tbody class="divide-y divide-gray-100">${rows}</tbody></table></div>`;
+            fitSeasonTable(el);
+            if (!window.ResizeObserver || seasonTableWidths.has(el)) return;
+            seasonTableWidths.set(el, -1);
+            new ResizeObserver(entries => {
+                const w = entries[0].contentRect.width;
+                if (w === seasonTableWidths.get(el)) return;
+                seasonTableWidths.set(el, w);
+                requestAnimationFrame(() => fitSeasonTable(el));
+            }).observe(el);
+        }
+        window.renderSeasonTable = renderSeasonTable;
+
+        // The public page's season table: the same figures laid out like the live link's table, so it fits any screen
+        // at normal text size — place | team (Spieltage · Spiele · Sätze · Bälle below) | points.
+        function renderSeasonPublicTable(el, result) {
+            if (!result.rows.length) {
+                el.innerHTML = '<p class="text-xs text-gray-500">Noch keine Ergebnisse.</p>';
+                return;
+            }
+            const part = text => `<span class="whitespace-nowrap">${text}</span>`;
+            const count = (n, one, many) => part(`${Number(n)} ${Number(n) === 1 ? one : many}`);
+            const rows = result.rows.map(r => `
+                <tr class="border-b border-gray-100 align-top ${r.place === 1 ? 'bg-amber-50/40' : ''}">
+                    <td class="py-1.5 pr-3 font-mono font-bold text-gray-700">${Number(r.place)}</td>
+                    <td class="py-1.5 pr-3 w-full">
+                        <div class="font-semibold text-gray-900 break-words">${escapeHtml(r.name)}</div>
+                        <div class="text-xs text-gray-500">${[
+                            count(r.days, 'Spieltag', 'Spieltage'), count(r.games, 'Spiel', 'Spiele'),
+                            part(`Sätze ${Number(r.setsFor)}:${Number(r.setsAgainst)}`),
+                            part(`Bälle ${Number(r.ballsFor)}:${Number(r.ballsAgainst)}`)].join(' · ')}</div>
+                    </td>
+                    <td class="py-1.5 font-mono font-bold text-gray-800 text-right">${Number(r.points)}</td>
+                </tr>`).join('');
+            el.innerHTML = `<table class="w-full text-left text-sm border-collapse">
+                <thead class="text-gray-400 uppercase font-mono text-xs"><tr class="border-b">
+                    <th class="py-1 pr-3">Platz</th><th class="py-1 pr-3">Team</th>
+                    <th class="py-1 text-right">Punkte</th>
+                </tr></thead><tbody>${rows}</tbody></table>`;
+        }
+        window.renderSeasonPublicTable = renderSeasonPublicTable;
 
         // Endstand: final 1–N placement from the bracket finals (shown once places are being decided).
         // Placement games after a Liga ("Platz 1/2", "Platz 3/4", …): the winner takes the better place.
@@ -4873,7 +5104,8 @@
         }
 
         window.onload = function() {
-            if (VIEWER) { startViewer(LIVE_ID); initCloud(); return; } // nothing local is loaded or shown
+            if (LIVE_ID) { startViewer(LIVE_ID); initCloud(); return; } // nothing local is loaded or shown
+            if (VIEWER) { startSeasonPublic(); return; }
             window.loadStateFromLocalStorage();
             
             renderTournamentIdentity();
@@ -4911,6 +5143,7 @@
 
             window.updateLiveClock();
             setInterval(window.updateLiveClock, 20000); // live wall-clock in the header
+            fillSeasonNames();
             initCloud(); // after the app is up: a slow or blocked CDN never delays it
         };
 
@@ -4948,10 +5181,12 @@
                 if (b && cloudState !== 'conflict') { setCloudState(idleState(b)); if (b.dirty) uploadNow(); }
                 renderCloudStatus();
                 ensureOnline();
+                refreshSeasonTab(false);
             });
             renderCloudUser();
             syncWatch(true);
             renderCloudStatus();
+            refreshSeasonTab(true);
         }
         window.addEventListener('cloud-ready', onCloudReady);
         function renderCloudUser() {
@@ -5733,6 +5968,373 @@
         }
         window.copyLiveLink = copyLiveLink;
 
+        // --- GESAMTTABELLE TAB ---
+        // Settings live in seasons/<year>; the table is computed from the ticked days' own data, each read once per build.
+        // days: day id → its state, or null when it could not be loaded.
+        const seasonView = { build: 0, ready: false, year: null, years: [], list: [], settings: null, version: 0, days: {},
+            openGames: new Set(), queue: Promise.resolve() };
+        const seasonSettingsOf = doc => {
+            const s = (doc && doc.settings) || {};
+            return { days: Array.isArray(s.days) ? s.days : [], aliases: s.aliases || {}, skipGames: s.skipGames || {} };
+        };
+        const seasonYearOf = t => t.season || (isIsoDate(t.date) ? Number(t.date.slice(0, 4)) : null);
+        function seasonDayName(id, list = seasonView.list) {
+            const t = list.find(d => d.id === id);
+            if (!t) return id;
+            return t.name || (t.city && isIsoDate(t.date) ? tournamentName(t.city, t.date) : id);
+        }
+        function seasonMessage(text) {
+            document.getElementById('season-notes').replaceChildren();
+            document.getElementById('season-admin').classList.add('hidden');
+            const p = document.createElement('p');
+            p.className = 'text-xs text-gray-500';
+            p.textContent = text;
+            document.getElementById('season-table').replaceChildren(p);
+        }
+        async function loadSeasonDays(cache, ids) {
+            const missing = ids.filter(id => !(id in cache));
+            const docs = await Promise.all(missing.map(id => window.cloud.load(id).catch(e => {
+                console.warn('Spieltag ' + id + ' nicht geladen:', e && e.message);
+                return null;
+            })));
+            missing.forEach((id, i) => { cache[id] = docs[i] ? docs[i].state : null; });
+        }
+
+        async function fetchSeason(year) {
+            const doc = await window.cloud.loadSeason(year);
+            const settings = seasonSettingsOf(doc), days = {};
+            await loadSeasonDays(days, settings.days);
+            return { doc, settings, days };
+        }
+        // The ticked days that could be loaded and read, as computeSeasonTable takes them.
+        const seasonLoadedDays = (list, settings, days) =>
+            settings.days.filter(id => seasonDayUsable(days[id])).map(id => {
+                const t = list.find(d => d.id === id) || {};
+                return { id, name: seasonDayName(id, list), date: t.date || days[id].tournament.date, state: days[id] };
+            });
+
+        // ---- Public season table (?saison=<year>): watches the season document and its ticked days, shows only the table ----
+        function startSeasonPublic() {
+            document.body.classList.add('viewer-mode');
+            document.getElementById('season-public').classList.remove('hidden');
+            const message = document.getElementById('season-public-message');
+            if (SEASON_YEAR === null) {
+                message.textContent = 'Ungültiges Jahr. Bitte den Link prüfen.';
+                return;
+            }
+            const title = 'Gesamttabelle ' + SEASON_YEAR;
+            document.getElementById('season-public-title').textContent = title;
+            document.title = title;
+            const pub = { settings: null, days: {}, unwatch: {}, shown: false };
+            const showMessage = text => {
+                message.textContent = text;
+                message.classList.remove('hidden');
+                document.getElementById('season-public-table').classList.add('hidden');
+                document.getElementById('season-public-stand').classList.add('hidden');
+            };
+            const render = () => {
+                if (!pub.settings || pub.settings.days.some(id => !(id in pub.days))) return; // every ticked day answered once
+                const list = [], states = {};
+                pub.settings.days.forEach(id => {
+                    const day = pub.days[id];
+                    states[id] = day ? day.state : null;
+                    if (day) list.push({ id, ...day.meta });
+                });
+                const result = computeSeasonTable(seasonLoadedDays(list, pub.settings, states), pub.settings);
+                const table = document.getElementById('season-public-table');
+                message.classList.add('hidden');
+                table.classList.remove('hidden');
+                renderSeasonPublicTable(table, result);
+                const now = new Date();
+                const stand = document.getElementById('season-public-stand');
+                stand.textContent = 'Stand ' + now.toLocaleDateString('de-DE') + ' ' + now.toTimeString().slice(0, 5);
+                stand.classList.remove('hidden');
+                pub.shown = true;
+            };
+            const onDay = (id, snap) => {
+                // a failed or stale read never replaces a copy already shown
+                if (pub.days[id] && (!snap || snap.fromCache)) return;
+                pub.days[id] = snap;
+                render();
+            };
+            const syncDays = ids => {
+                Object.keys(pub.unwatch).filter(id => !ids.includes(id)).forEach(id => {
+                    pub.unwatch[id]();
+                    delete pub.unwatch[id];
+                    delete pub.days[id];
+                });
+                ids.filter(id => !(id in pub.unwatch)).forEach(id => { pub.unwatch[id] = window.cloud.watch(id, snap => onDay(id, snap)); });
+            };
+            const onSeason = doc => {
+                if (!doc) { // no season document yet, or the connection broke after it was shown: keep what is on screen
+                    if (!pub.shown) showMessage('Noch keine Gesamttabelle für ' + SEASON_YEAR + '.');
+                    return;
+                }
+                pub.settings = seasonSettingsOf(doc);
+                syncDays(pub.settings.days);
+                render();
+            };
+            let watching = false;
+            const watch = () => {
+                if (!window.cloud || watching) return;
+                watching = true;
+                window.cloud.watchSeason(SEASON_YEAR, onSeason);
+            };
+            window.addEventListener('cloud-ready', watch);
+            watch();
+            initCloud();
+        }
+
+        // Team names offered while entering teams: the display names of the last season table built on this device.
+        const SEASON_NAMES_KEY = 'tmgr_season_names_v1';
+        function fillSeasonNames() {
+            let names = [];
+            try {
+                const stored = JSON.parse(localStorage.getItem(SEASON_NAMES_KEY));
+                if (stored && Array.isArray(stored.names)) names = stored.names.filter(n => typeof n === 'string');
+            } catch (e) { console.warn('Saisonnamen unlesbar:', e); }
+            document.getElementById('season-team-names').replaceChildren(...names.map(n => new Option(n)));
+        }
+        window.fillSeasonNames = fillSeasonNames;
+        function storeSeasonNames(year, rows) {
+            try { localStorage.setItem(SEASON_NAMES_KEY, JSON.stringify({ year, names: rows.map(r => r.name) })); }
+            catch (e) { console.warn('Saisonnamen nicht gespeichert:', e); }
+            fillSeasonNames();
+        }
+        // An admin's first focus of a team-name field, once per page load: builds the year of this device's day
+        // in the background (season settings and its ticked days only) and keeps its names. Touches neither the tab
+        // nor appState and never shows an error.
+        let seasonNamesRefreshed = false;
+        async function refreshSeasonNames() {
+            if (seasonNamesRefreshed || VIEWER || cloudAdmin !== true || !window.cloud) return;
+            seasonNamesRefreshed = true;
+            try {
+                const date = appState.tournament.date;
+                const year = isIsoDate(date) ? Number(date.slice(0, 4)) : new Date().getFullYear();
+                const { settings, days } = await fetchSeason(year);
+                storeSeasonNames(year, computeSeasonTable(seasonLoadedDays([], settings, days), settings).rows);
+            } catch (e) { console.warn('Saisonnamen nicht aktualisiert:', e && e.message); }
+        }
+        ['input-new-team', 'team-f-name'].forEach(id =>
+            document.getElementById(id).addEventListener('focus', refreshSeasonNames));
+
+        // Loads the day list, the year's settings and its ticked days, then shows the tab. No year: the one shown last,
+        // else the year of the day on this device if that year has days, else the current year.
+        async function openSeason(year) {
+            const build = ++seasonView.build;
+            seasonView.ready = false;
+            if (!window.cloud) { seasonMessage('Die Gesamttabelle ist nur online verfügbar.'); return; }
+            seasonMessage('Lädt…');
+            try {
+                const list = await window.cloud.list();
+                const years = [...new Set(list.map(seasonYearOf).filter(Boolean))].sort((a, b) => b - a);
+                const own = isIsoDate(appState.tournament.date) ? Number(appState.tournament.date.slice(0, 4)) : null;
+                const chosen = year || seasonView.year || (years.includes(own) ? own : new Date().getFullYear());
+                const { doc, settings, days } = await fetchSeason(chosen);
+                if (build !== seasonView.build) return; // another year or a new opening meanwhile
+                Object.assign(seasonView, { ready: true, year: chosen, years, list, settings, version: doc ? doc.version : 0, days });
+                renderSeason();
+            } catch (e) {
+                if (build === seasonView.build) seasonMessage(cloudErrorText(e));
+            }
+        }
+        window.openSeason = openSeason;
+        // Login or admin status changed while the tab is open: show or hide the admin parts (a new adapter: reload).
+        function refreshSeasonTab(reload) {
+            if (document.getElementById('tab-season').classList.contains('hidden')) return;
+            if (reload) openSeason();
+            else if (seasonView.ready) renderSeason();
+        }
+
+        function renderSeason() {
+            const v = seasonView;
+            const loaded = seasonLoadedDays(v.list, v.settings, v.days);
+            const result = computeSeasonTable(loaded, v.settings);
+            storeSeasonNames(v.year, result.rows);
+            document.getElementById('season-title').textContent = 'Gesamttabelle ' + v.year;
+            const unread = v.settings.days.filter(id => !seasonDayUsable(v.days[id]));
+            document.getElementById('season-notes').replaceChildren(...unread.map(id => {
+                const p = document.createElement('p');
+                p.textContent = `„${seasonDayName(id)}“ konnte nicht geladen werden`;
+                return p;
+            }));
+            renderSeasonTable(document.getElementById('season-table'), result);
+            const admin = cloudAdmin === true;
+            document.getElementById('season-admin').classList.toggle('hidden', !admin);
+            document.getElementById('season-year').classList.toggle('hidden', !admin);
+            if (!admin) { // table only: no controls in the page at all
+                ['season-days', 'season-names-list', 'season-games', 'season-year'].forEach(id => document.getElementById(id).replaceChildren());
+                document.getElementById('season-names').classList.add('hidden');
+                return;
+            }
+            const years = v.years.includes(v.year) ? v.years : [v.year, ...v.years].sort((a, b) => b - a);
+            document.getElementById('season-year').replaceChildren(...years.map(y => new Option(String(y), String(y), false, y === v.year)));
+            renderSeasonDays();
+            renderSeasonNames(result, loaded);
+            renderSeasonGames(loaded);
+            document.getElementById('season-link-url').value = location.origin + location.pathname + '?saison=' + v.year;
+        }
+
+        // onChange null: shown, but cannot be changed.
+        function seasonCheckRow(text, checked, data, onChange) {
+            const li = document.createElement('li');
+            const label = document.createElement('label');
+            label.className = 'flex items-start gap-2 py-2 ' + (onChange ? 'cursor-pointer' : 'text-gray-500');
+            const box = document.createElement('input');
+            box.type = 'checkbox';
+            box.checked = checked;
+            box.disabled = !onChange;
+            Object.assign(box.dataset, data);
+            if (onChange) box.addEventListener('change', () => onChange(box.checked));
+            const span = document.createElement('span');
+            span.className = 'min-w-0 break-words';
+            span.textContent = text;
+            label.append(box, span);
+            li.append(label);
+            return li;
+        }
+        // Every match day of the year, running or archived, plus every ticked day.
+        function renderSeasonDays() {
+            const v = seasonView;
+            const ticked = id => v.settings.days.includes(id);
+            const days = v.list.filter(t => ticked(t.id) || seasonYearOf(t) === v.year)
+                .sort((a, b) => Number(ticked(b.id)) - Number(ticked(a.id)) || String(a.date || '').localeCompare(String(b.date || '')));
+            const gone = v.settings.days.filter(id => !v.list.some(t => t.id === id)).map(id => ({ id }));
+            const items = [...gone, ...days].map(t => seasonCheckRow(seasonDayName(t.id), ticked(t.id), { day: t.id }, on => toggleSeasonDay(t.id, on)));
+            const empty = document.createElement('li');
+            empty.className = 'py-2 text-gray-500';
+            empty.textContent = `Keine Spieltage ${v.year}.`;
+            document.getElementById('season-days').replaceChildren(...(items.length ? items : [empty]));
+        }
+
+        // Each new name: "gehört zu" one of the table's teams that did not play on the same day, or "neu".
+        function renderSeasonNames(result, loaded) {
+            const aliases = seasonView.settings.aliases;
+            const identity = name => { const key = seasonKey(name); return key in aliases ? seasonKey(aliases[key]) : key; };
+            document.getElementById('season-names').classList.toggle('hidden', !result.unknownNames.length);
+            document.getElementById('season-names-list').replaceChildren(...result.unknownNames.map(({ dayId, name }) => {
+                const day = loaded.find(d => d.id === dayId);
+                const sameDay = new Set(day.state.teams.map(t => identity(t.name)));
+                const sel = document.createElement('select');
+                sel.className = 'w-full min-w-0 px-2 py-1.5 bg-white border rounded-md text-xs font-semibold text-gray-800';
+                sel.dataset.name = name;
+                sel.setAttribute('aria-label', `„${name}“ zuordnen`);
+                const placeholder = new Option('zuordnen …', '', true, true);
+                placeholder.disabled = true;
+                const group = document.createElement('optgroup');
+                group.label = 'gehört zu …';
+                result.rows.filter(r => !sameDay.has(seasonKey(r.name))).forEach(r => {
+                    const o = new Option(r.name);
+                    o.dataset.target = r.name;
+                    group.append(o);
+                });
+                const fresh = new Option('neu');
+                fresh.dataset.target = '';
+                sel.append(placeholder, group, fresh);
+                sel.addEventListener('change', () => setSeasonAlias(name, sel.selectedOptions[0].dataset.target));
+                const li = document.createElement('li');
+                li.className = 'py-2 space-y-1';
+                const title = document.createElement('div');
+                title.className = 'break-words';
+                title.innerHTML = `<strong>${escapeHtml(name)}</strong> <span class="text-gray-500">· ${escapeHtml(day.name)}</span>`;
+                li.append(title, sel);
+                return li;
+            }));
+        }
+
+        // Per ticked day a fold-out list of its finished games; a game without a tick is taken out. A game the
+        // season rules do not count (e.g. against a Joker not every team played) shows "zählt nicht", without a tick.
+        function renderSeasonGames(loaded) {
+            const v = seasonView;
+            const boxes = loaded.map(day => {
+                const skipped = v.settings.skipGames[day.id] || [];
+                const team = id => { const t = day.state.teams.find(x => x.id === id); return t ? t.name : '?'; };
+                const games = (day.state.matches || []).filter(m => gameResult(m, day.state.tournament));
+                const counting = new Set(seasonCountedGames(day, skipped).counted.map(({ game }) => game.id));
+                const details = document.createElement('details');
+                details.className = 'border rounded-lg px-3';
+                details.open = v.openGames.has(day.id);
+                details.addEventListener('toggle', () => { if (details.open) v.openGames.add(day.id); else v.openGames.delete(day.id); });
+                const summary = document.createElement('summary');
+                summary.className = 'cursor-pointer py-2 font-semibold break-words';
+                const out = games.filter(m => skipped.includes(m.id)).length;
+                const outText = out ? ` · ${out} herausgenommen` : '';
+                summary.textContent = `${day.name} · ${counting.size + out} Spiele${outText}`;
+                const ul = document.createElement('ul');
+                ul.className = 'divide-y divide-gray-100';
+                ul.append(...games.map(m => {
+                    const round = [m.round ? `Runde ${m.round}` : '', m.phase || ''].filter(Boolean).join(' · ');
+                    const text = `${round ? round + ' · ' : ''}${team(m.teamAId)} vs ${team(m.teamBId)} · ${m.setsA || 0}:${m.setsB || 0} (${m.scoreA || 0}:${m.scoreB || 0})`;
+                    const data = { day: day.id, game: m.id }, isOut = skipped.includes(m.id);
+                    if (!isOut && !counting.has(m.id)) {
+                        return seasonCheckRow(text + ' · zählt nicht', false, data, null);
+                    }
+                    return seasonCheckRow(text, !isOut, data, on => toggleSeasonGame(day.id, m.id, on));
+                }));
+                details.append(summary, ul);
+                return details;
+            });
+            const empty = document.createElement('p');
+            empty.className = 'text-gray-500';
+            empty.textContent = 'Erst Spieltage ankreuzen.';
+            document.getElementById('season-games').replaceChildren(...(boxes.length ? boxes : [empty]));
+        }
+
+        // One change to the settings, saved with the version check. Changes run one after another; on a conflict
+        // (another admin saved meanwhile) the settings are reloaded and only this change is applied again.
+        // The year is the one shown at the click; a change still waiting when another year is opened is dropped.
+        function changeSeason(apply) {
+            const year = seasonView.year;
+            seasonView.queue = seasonView.queue.then(() => saveSeasonChange(year, apply));
+            return seasonView.queue;
+        }
+        async function saveSeasonChange(year, apply) {
+            const v = seasonView;
+            if (v.year !== year) return;
+            try {
+                for (let attempt = 0; attempt < 3; attempt++) {
+                    const settings = JSON.parse(JSON.stringify(v.settings));
+                    apply(settings);
+                    const r = await window.cloud.saveSeason(year, settings, v.version);
+                    if (v.year !== year) return; // another year opened meanwhile
+                    if (r.ok) { v.settings = settings; v.version = r.version; break; }
+                    const fresh = await window.cloud.loadSeason(year);
+                    if (v.year !== year) return;
+                    v.settings = seasonSettingsOf(fresh); v.version = fresh ? fresh.version : 0;
+                    if (attempt === 2) uiToast('Wurde gerade woanders geändert – bitte noch einmal versuchen.', 'error');
+                }
+                await loadSeasonDays(v.days, v.settings.days);
+            } catch (e) { uiToast(cloudErrorText(e), 'error'); }
+            if (v.year === year && v.ready) renderSeason();
+        }
+        function toggleSeasonDay(id, on) {
+            return changeSeason(s => { s.days = s.days.filter(d => d !== id).concat(on ? [id] : []); });
+        }
+        window.toggleSeasonDay = toggleSeasonDay;
+        // target: a table row's name (always a root name, never an alias), or '' for "neu" (the name stands for itself).
+        // Aliases pointing at `name` move to the new target, so no chains arise.
+        function setSeasonAlias(name, target) {
+            return changeSeason(s => {
+                const key = seasonKey(name), value = target || String(name).trim();
+                Object.keys(s.aliases).forEach(k => { if (seasonKey(s.aliases[k]) === key) s.aliases[k] = value; });
+                s.aliases[key] = value;
+            });
+        }
+        window.setSeasonAlias = setSeasonAlias;
+        function toggleSeasonGame(dayId, gameId, on) {
+            return changeSeason(s => {
+                const rest = (s.skipGames[dayId] || []).filter(g => g !== gameId).concat(on ? [] : [gameId]);
+                if (rest.length) s.skipGames[dayId] = rest; else delete s.skipGames[dayId];
+            });
+        }
+        window.toggleSeasonGame = toggleSeasonGame;
+        async function copySeasonLink() {
+            const inp = document.getElementById('season-link-url');
+            try { await navigator.clipboard.writeText(inp.value); uiToast('Link kopiert.'); }
+            catch (e) { inp.focus(); inp.select(); uiToast('Link markiert – bitte kopieren.'); }
+        }
+        window.copySeasonLink = copySeasonLink;
+
         async function initCloud() {
             if (location.protocol === 'file:' || window.cloud) return; // Firebase login needs http(s)
             try {
@@ -5756,6 +6358,11 @@
                 updatedAt: d.updatedAt && d.updatedAt.toDate ? d.updatedAt.toDate().toISOString() : null });
             const parse = (d, id) => {
                 try { return JSON.parse(d.state); } catch (e) { console.error('Online-Turnier ' + id + ' hat ungültige Daten', e); return null; }
+            };
+            const validYear = y => Number.isInteger(y) && y > 0;
+            const seasonRef = year => fs.doc(db, 'seasons', String(year));
+            const readSeason = (d, year) => {
+                try { return { settings: JSON.parse(d.settings), version: d.version }; } catch (e) { console.error('Saison ' + year + ' hat ungültige Daten', e); return null; }
             };
             // 'offline' only for network failures (retry later); 'denied' for missing rights (never retry);
             // anything else surfaces with its code so it is not retried forever as "offline".
@@ -5833,6 +6440,34 @@
                         const state = parse(d, id);
                         return state ? { meta: meta(d), state, version: d.version } : null;
                     } catch (e) { throw fail(e); }
+                },
+                // season settings document seasons/<year>: { settings (JSON string), version, updatedAt, updatedBy }
+                // -> { settings, version } | null (missing, bad year or unreadable)
+                async loadSeason(year) {
+                    if (!validYear(year)) return null;
+                    try {
+                        const snap = await fs.getDocFromServer(seasonRef(year));
+                        return snap.exists() ? readSeason(snap.data(), year) : null;
+                    } catch (e) { throw fail(e); }
+                },
+                // baseVersion 0 creates the document -> { ok:true, version } | { ok:false, conflict:true, version }
+                async saveSeason(year, settings, baseVersion) {
+                    if (!validYear(year)) throw new Error('invalid-year');
+                    try {
+                        return await fs.runTransaction(db, async tx => {
+                            const snap = await tx.get(seasonRef(year));
+                            const v = snap.exists() ? snap.data().version : 0;
+                            if (v !== baseVersion) return { ok: false, conflict: true, version: v };
+                            tx.set(seasonRef(year), { settings: JSON.stringify(settings), version: v + 1, updatedAt: fs.serverTimestamp(), updatedBy: writer() });
+                            return { ok: true, version: v + 1 };
+                        });
+                    } catch (e) { throw fail(e); }
+                },
+                // cb({ settings, version } | null) — null: not found, bad year or unreadable
+                watchSeason(year, cb) {
+                    if (!validYear(year)) { setTimeout(() => cb(null), 0); return () => {}; }
+                    return fs.onSnapshot(seasonRef(year), snap => cb(snap.exists() ? readSeason(snap.data(), year) : null),
+                        e => { console.error('Live-Verbindung zur Saison fehlgeschlagen', e); cb(null); });
                 },
                 // cb({ meta, state, version, fromCache } | null) — null: not found, malformed id or unreadable
                 watch(id, cb) {
