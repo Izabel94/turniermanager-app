@@ -522,7 +522,7 @@
         <!-- TAB 2: PROFILES & TIME SLOTS -->
         <section id="tab-profiles" class="space-y-6 hidden">
             <div class="bg-gray-50 border border-gray-200 rounded-lg p-4 text-xs text-gray-900 leading-relaxed">
-                <strong>Profil-Konfiguration:</strong> Erstellen Sie angepasste Spielprofile (z.B. Satzlängen, Gewinnsätze, Mindestpunkte & Entscheidungssätze) und weisen Sie diese einzelnen Runden oder Zeitfenstern zu.
+                <strong>Profil-Konfiguration:</strong> Ein Spielprofil legt Spieldauer, Gewinnsätze, Mindestpunkte und Entscheidungssatz fest. Unter „Profilzuweisung pro Runde“ bekommt jede Runde ihr Profil, mit „Alle Runden“ alle auf einmal.
             </div>
 
             <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -564,7 +564,7 @@
                     <div class="flex flex-wrap justify-between items-center border-b pb-3 gap-2">
                         <div>
                             <h2 class="font-bold text-sm text-gray-800">Mannschaften (<span id="team-count-badge">0</span>)</h2>
-                            <p class="text-xs text-gray-500">Verwalten Sie aktive Teams, Jokerteams oder Pausierungen.</p>
+                            <p class="text-xs text-gray-500">Aktive Teams, Jokerteams und pausierte Teams.</p>
                         </div>
                         <div class="flex flex-wrap gap-2">
                             <button onclick="loadSampleTeams()" class="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold rounded-md transition border">
@@ -621,7 +621,7 @@
                 <div class="bg-white border border-gray-200 rounded-xl p-5 shadow-sm space-y-4">
                     <h3 class="font-bold text-sm text-gray-800 border-b pb-2">Team-Ausfall & Joker-Regeln</h3>
                     <div class="text-xs text-gray-600 space-y-3 leading-relaxed">
-                        <p><strong>1. Team pausieren / früher gehen:</strong> Deaktivieren Sie ein Team im Menü. Neu erzeugte Runden (Schweizer Auslosung, Liga- oder Gruppen-Spielplan) werden automatisch ohne dieses Team berechnet.</p>
+                        <p><strong>1. Team pausieren / früher gehen:</strong> Ein Team im Menü deaktivieren. Neu erzeugte Runden (Schweizer Auslosung, Liga- oder Gruppen-Spielplan) werden automatisch ohne dieses Team berechnet.</p>
                         <p><strong>2. Joker / Platzhalter-Team:</strong> Verhindert ungewollte Freilose bei ungerader Teamzahl. Ein Joker-Team wird aus spielfreien/pausierenden Spielern gebildet.</p>
                     </div>
                 </div>
@@ -1680,7 +1680,8 @@
         function snapshotState() {
             return JSON.stringify({
                 tournament: appState.tournament, teams: appState.teams,
-                matches: appState.matches.map(asSaved), byes: appState.byes, seq: appState.seq
+                matches: appState.matches.map(asSaved), byes: appState.byes, seq: appState.seq,
+                roundProfileMap: appState.roundProfileMap
             });
         }
         // Typing a score updates the game right away (the Beamer shows it live). What counts — for undo and online —
@@ -1701,6 +1702,7 @@
             appState.matches = p.matches;
             appState.byes = p.byes || [];
             if (p.seq != null) appState.seq = p.seq;
+            if (p.roundProfileMap) appState.roundProfileMap = p.roundProfileMap;
             window.normalizeState(); // a snapshot taken by an older version gets the fields added since
         }
         function updateUndoRedoButtons() {
@@ -2283,17 +2285,17 @@
 
             const mappingContainer = document.getElementById('round-profile-mapping');
             if (mappingContainer) {
-                let mapHtml = '';
+                let mapHtml = `<div id="all-rounds-profile-row">${allRoundsRowHtml()}</div>`;
                 for (let r = 1; r <= appState.tournament.targetRounds; r++) {
                     const assignedProfId = profileForRound(r).id;
                     const options = appState.gameProfiles.map(p => `
-                        <option value="${p.id}" ${p.id === assignedProfId ? 'selected' : ''}>${p.name}</option>
+                        <option value="${p.id}" ${p.id === assignedProfId ? 'selected' : ''}>${escapeHtml(p.name)}</option>
                     `).join('');
 
                     mapHtml += `
-                        <div class="flex justify-between items-center p-2 bg-gray-50 border rounded">
-                            <span class="font-bold">Runde ${r}</span>
-                            <select onchange="assignRoundProfile(${r}, this.value)" class="px-2 py-1 border rounded text-xs font-bold text-gray-800">
+                        <div class="flex justify-between items-center gap-2 p-2 bg-gray-50 border rounded">
+                            <span class="font-bold whitespace-nowrap">Runde ${r}</span>
+                            <select data-round="${r}" onchange="assignRoundProfile(${r}, this.value)" class="min-w-0 px-2 py-1 border rounded text-xs font-bold text-gray-800">
                                 ${options}
                             </select>
                         </div>
@@ -2327,8 +2329,65 @@
             appState.roundProfileMap[roundNum] = profileId;
             window.calculateForecast();
             window.saveStateToLocalStorage();
+            syncRoundProfileBox();
         }
         window.assignRoundProfile = assignRoundProfile;
+
+        // The rounds "Alle Runden" changes: every planned round and every round with games, except rounds that already
+        // have a result: their games keep the sets they were played with and their blocks keep their real length.
+        function openProfileRounds() {
+            const rounds = new Set();
+            const last = Math.max(appState.tournament.targetRounds || 0, plannedRounds());
+            for (let r = 1; r <= last; r++) rounds.add(r);
+            (appState.matches || []).forEach(m => rounds.add(m.round));
+            const played = new Set((appState.matches || []).filter(m => m.status === 'COMPLETED').map(m => m.round));
+            return [...rounds].filter(r => r > 0 && !played.has(r)).sort((a, b) => a - b);
+        }
+
+        function allRoundsRowHtml() {
+            const rounds = openProfileRounds();
+            if (!rounds.length) return '';
+            const used = new Set(rounds.map(r => profileForRound(r).id));
+            if (appState.tournament.mode === 'GROUPS_PLAYOFFS') {
+                used.add(appState.tournament.finalsProfileId || 'PROF-STD');
+                if (appState.tournament.zwischenEnabled) used.add(appState.tournament.zwischenProfileId || 'PROF-STD');
+            }
+            const same = used.size === 1;
+            const options = (same ? '' : '<option value="" selected disabled>unterschiedlich</option>')
+                + appState.gameProfiles.map(p => `<option value="${p.id}" ${same && used.has(p.id) ? 'selected' : ''}>${escapeHtml(p.name)}</option>`).join('');
+            const label = 'Alle Runden' + (rounds[0] > 1 ? `<span class="block font-normal text-gray-600">ab Runde ${rounds[0]}</span>` : '');
+            return `
+                <div class="flex flex-wrap justify-between items-center gap-2 p-2 bg-white border-2 border-gray-800 rounded">
+                    <label for="sel-all-rounds-profile" class="font-bold whitespace-nowrap">${label}</label>
+                    <select id="sel-all-rounds-profile" onchange="assignAllRoundsProfile(this.value)" class="max-w-full px-2 py-1 border rounded text-xs font-bold text-gray-800">
+                        ${options}
+                    </select>
+                </div>`;
+        }
+
+        // Brings the box up to date without replacing the select in use (an open picker on a phone stays open).
+        function syncRoundProfileBox() {
+            const active = document.activeElement;
+            document.querySelectorAll('#round-profile-mapping select[data-round]').forEach(sel => {
+                if (sel !== active) sel.value = profileForRound(Number(sel.dataset.round)).id;
+            });
+            const row = document.getElementById('all-rounds-profile-row');
+            if (row && !row.contains(active)) row.innerHTML = allRoundsRowHtml();
+        }
+
+        function assignAllRoundsProfile(profileId) {
+            if (!appState.gameProfiles.some(p => p.id === profileId)) return;
+            window.pushHistorySnapshot();
+            appState.roundProfileMap = appState.roundProfileMap || {};
+            openProfileRounds().forEach(r => { appState.roundProfileMap[r] = profileId; });
+            appState.tournament.finalsProfileId = profileId;
+            appState.tournament.zwischenProfileId = profileId;
+            ['sel-finals-profile', 'sel-zwischen-profile'].forEach(id => { const el = document.getElementById(id); if (el) el.value = profileId; });
+            window.calculateForecast();
+            window.saveStateToLocalStorage();
+            syncRoundProfileBox();
+        }
+        window.assignAllRoundsProfile = assignAllRoundsProfile;
 
         function addTimeSlot() {
             window.pushHistorySnapshot();
